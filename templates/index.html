@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>CloudOC</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/otpauth/9.1.4/otpauth.umd.min.js"></script>
+    <style>
+        body { margin: 0; background-color: #121212; color: #fff; font-family: 'Segoe UI', sans-serif; }
+
+        header {
+            position: absolute; top: 0; left: 0; width: 100%;
+            padding: 20px 40px; box-sizing: border-box;
+            display: flex; justify-content: space-between; align-items: center; z-index: 100;
+        }
+
+        .logo { font-size: 24px; font-weight: bold; letter-spacing: 2px; }
+
+        /* Группа кнопок в шапке */
+        .auth-buttons { display: flex; gap: 15px; }
+
+        /* Кнопка Войти */
+        .btn-login {
+            border: 2px solid #28a745; background: transparent; color: #28a745;
+            padding: 8px 20px; border-radius: 20px; cursor: pointer; font-weight: bold; text-decoration: none;
+        }
+        .btn-login:hover { background: #28a745; color: white; }
+
+        /* Кнопка Регистрация (НОВАЯ) */
+        .btn-register {
+            background: #333; color: #fff; border: none;
+            padding: 10px 20px; border-radius: 20px; cursor: pointer; text-decoration: none; font-size: 14px;
+        }
+        .btn-register:hover { background: #444; }
+
+        /* Кнопка Аккаунт (Если вошел) */
+        .account-btn {
+            background: #222; border: 2px solid #00ff9d; color: #fff;
+            padding: 10px 20px; border-radius: 30px; cursor: pointer;
+            font-weight: bold; display: flex; align-items: center; gap: 10px;
+        }
+        .online-dot { width: 10px; height: 10px; background: #00ff9d; border-radius: 50%; box-shadow: 0 0 10px #00ff9d; }
+
+        /* Выпадающее меню */
+        .dropdown {
+            position: absolute; top: 70px; right: 40px; width: 320px;
+            background: #1a1a1a; border: 1px solid #444; border-radius: 10px;
+            padding: 20px; display: none; z-index: 200; box-shadow: 0 20px 50px #000;
+        }
+
+        /* Окно входа */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: none; justify-content: center; align-items: center; z-index: 300; }
+        .card { background: #1e1e1e; padding: 40px; border-radius: 15px; text-align: center; width: 320px; border: 1px solid #333; position: relative; }
+
+        input { width: 100%; padding: 12px; margin: 10px 0; background: #2b2b2b; border: 1px solid #444; color: white; border-radius: 5px; box-sizing: border-box;}
+        .submit { width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 10px;}
+
+        /* Ссылка на регистрацию в модалке */
+        .reg-link-btn {
+            display: block; margin-top: 20px; padding: 10px;
+            background: #333; color: #ccc; text-decoration: none; border-radius: 5px; font-size: 14px;
+        }
+        .reg-link-btn:hover { background: #444; color: #fff; }
+
+        .close { position: absolute; top: 15px; right: 20px; cursor: pointer; font-size: 24px; color: #555; }
+
+        .hero { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+        .hero h1 { font-size: 60px; margin: 0; background: linear-gradient(90deg, #fff, #00ff9d); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .btn-dl { margin-top: 40px; margin-left: -60px; padding: 15px 40px; font-size: 18px; color: #00ff9d; border: 2px dashed #00ff9d; background: #1a1a1a; border-radius: 10px; cursor: not-allowed; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">CloudOC</div>
+
+        {% if logged_in %}
+            <div>
+                <button class="account-btn" onclick="toggleMenu()">
+                    <div class="online-dot"></div> Аккаунт
+                </button>
+                <div id="menu" class="dropdown">
+                    <h3 style="margin-top:0;">{{ username }}</h3>
+                    <div style="background:#000; padding:15px; border-radius:8px; margin:15px 0; text-align:center; border:1px solid #333;">
+                        <div id="otp" style="font-family:monospace; font-size:32px; color:#00ff9d; letter-spacing:3px;">...</div>
+                        <div style="height:4px; background:#333; margin-top:10px; width:100%;"><div id="bar" style="height:100%; width:0%; background:#00ff9d;"></div></div>
+                    </div>
+                    <p style="color:#666; font-size:11px;">SECRET: {{ secret }}</p>
+                    <a href="/logout" style="color:#ff4444; text-decoration:none; font-size:14px;">Выйти</a>
+                </div>
+            </div>
+        {% else %}
+            <div class="auth-buttons">
+                <a href="/register" class="btn-register">Регистрация</a>
+                <button class="btn-login" onclick="openLogin()">Войти</button>
+            </div>
+        {% endif %}
+    </header>
+
+    <section class="hero">
+        <h1>CloudOC</h1>
+        <p style="color: #aaa;">Облачная ОС будущего</p>
+        <button class="btn-dl">⬇ Скачать (Скоро)</button>
+    </section>
+
+    <div id="loginModal" class="modal">
+        <div class="card">
+            <span class="close" onclick="closeLogin()">&times;</span>
+            <h2 style="color:#28a745; margin-top:0;">Вход</h2>
+            <form onsubmit="doLogin(event)">
+                <input type="text" name="username" placeholder="Логин" required>
+                <input type="password" name="password" placeholder="Пароль" required>
+                <input type="text" name="code" placeholder="Код 2FA" required>
+                <button type="submit" class="submit">Войти</button>
+            </form>
+
+            <a href="/register" class="reg-link-btn">Нет аккаунта? Создать</a>
+        </div>
+    </div>
+
+    <script>
+        function openLogin() { document.getElementById('loginModal').style.display = 'flex'; }
+        function closeLogin() { document.getElementById('loginModal').style.display = 'none'; }
+        function toggleMenu() {
+            let m = document.getElementById('menu');
+            m.style.display = (m.style.display == 'block') ? 'none' : 'block';
+        }
+
+        async function doLogin(e) {
+            e.preventDefault();
+            let data = Object.fromEntries(new FormData(e.target).entries());
+            let res = await fetch('/api/login', {
+                method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+            });
+            let ans = await res.json();
+            if(ans.status === 'success') window.location.reload();
+            else alert(ans.message);
+        }
+
+        {% if logged_in %}
+            const totp = new OTPAuth.TOTP({ algorithm:'SHA1', digits:6, period:30, secret:OTPAuth.Secret.fromBase32("{{ secret }}") });
+            function tick() {
+                let t = totp.generate();
+                document.getElementById('otp').innerText = t.slice(0,3) + " " + t.slice(3,6);
+                let epoch = Math.floor(Date.now()/1000);
+                let rem = 30 - (epoch % 30);
+                document.getElementById('bar').style.width = (rem/30*100) + "%";
+            }
+            setInterval(tick, 1000); tick();
+        {% endif %}
+    </script>
+</body>
+</html>

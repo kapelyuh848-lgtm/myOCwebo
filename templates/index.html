@@ -2,59 +2,149 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>MyOC - Cloud Auth</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MyOC - Cloud Auth Terminal</title>
     <style>
-        body { background: #0f0f0f; color: #00ffcc; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .container { background: #1a1a1a; padding: 30px; border-radius: 15px; border: 1px solid #00ffcc; box-shadow: 0 0 20px #00ffcc33; width: 350px; text-align: center; }
-        input { width: 90%; padding: 10px; margin: 10px 0; background: #222; border: 1px solid #333; color: white; border-radius: 5px; }
-        button { background: #00ffcc; color: black; border: none; padding: 12px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.3s; }
-        button:hover { background: #00cca3; box-shadow: 0 0 15px #00ffcc; }
-        .code-display { font-size: 32px; letter-spacing: 5px; margin: 20px 0; color: #ff00ff; text-shadow: 0 0 10px #ff00ff; }
-        .status { font-size: 12px; margin-top: 10px; color: #888; }
+        body { 
+            background: #0f0f0f; 
+            color: #00ffcc; 
+            font-family: 'Consolas', 'Courier New', monospace; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0; 
+        }
+        .container { 
+            background: #1a1a1a; 
+            padding: 30px; 
+            border-radius: 10px; 
+            border: 1px solid #00ffcc; 
+            box-shadow: 0 0 20px rgba(0, 255, 204, 0.2); 
+            width: 350px; 
+            text-align: center; 
+        }
+        h2 { margin-bottom: 25px; text-transform: uppercase; letter-spacing: 2px; }
+        input { 
+            width: 90%; 
+            padding: 12px; 
+            margin: 10px 0; 
+            background: #050505; 
+            border: 1px solid #00ffcc; 
+            color: #00ffcc; 
+            border-radius: 4px; 
+            outline: none;
+        }
+        input::placeholder { color: #006652; }
+        button { 
+            background: #00ffcc; 
+            color: #000; 
+            border: none; 
+            padding: 12px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            width: 97%; 
+            margin-top: 10px;
+            transition: 0.3s;
+            text-transform: uppercase;
+        }
+        button:hover { 
+            background: #000; 
+            color: #00ffcc; 
+            box-shadow: 0 0 15px #00ffcc; 
+            border: 1px solid #00ffcc;
+        }
+        .code-display { 
+            font-size: 32px; 
+            letter-spacing: 8px; 
+            margin: 20px 0; 
+            color: #ff00ff; 
+            text-shadow: 0 0 10px #ff00ff;
+            background: #000;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .status { 
+            font-size: 13px; 
+            margin-top: 20px; 
+            color: #00ffcc; 
+            min-height: 15px;
+        }
+        hr { border: 0; border-top: 1px solid #333; margin: 25px 0; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>MyOC Terminal</h2>
+        <h2>MyOC Access</h2>
         
         <div id="reg-form">
-            <input type="text" id="user" placeholder="Логин">
-            <input type="password" id="pass" placeholder="Пароль">
-            <button onclick="register()">ЗАРЕГИСТРИРОВАТЬСЯ</button>
+            <input type="text" id="user" placeholder="ЛОГИН">
+            <input type="password" id="pass" placeholder="ПАРОЛЬ">
+            <button onclick="registerUser()">ЗАРЕГИСТРИРОВАТЬСЯ</button>
         </div>
 
-        <hr style="border: 0.5px solid #333; margin: 20px 0;">
+        <hr>
 
         <div id="auth-form">
-            <input type="text" id="auth-user" placeholder="Введите логин для кода">
-            <button onclick="getCode()">ПОЛУЧИТЬ 2FA КОД</button>
+            <input type="text" id="auth-user" placeholder="ЛОГИН ДЛЯ 2FA">
+            <button onclick="getTwoFactorCode()">ПОЛУЧИТЬ КОД</button>
             <div id="2fa-code" class="code-display">------</div>
         </div>
         
-        <p class="status" id="status-text">Система готова</p>
+        <p class="status" id="status-text">SYSTEM READY</p>
     </div>
 
     <script>
-        async fn register() {
+        async function registerUser() {
             const user = document.getElementById('user').value;
             const pass = document.getElementById('pass').value;
-            const res = await fetch('/api/register', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({username: user, password: pass})
-            });
-            const data = await res.json();
-            document.getElementById('status-text').innerText = data.message;
+            const status = document.getElementById('status-text');
+
+            if(!user || !pass) {
+                status.innerText = "ОШИБКА: ЗАПОЛНИТЕ ПОЛЯ";
+                return;
+            }
+
+            status.innerText = "ОТПРАВКА ДАННЫХ...";
+
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username: user, password: pass})
+                });
+                const data = await response.json();
+                status.innerText = data.message.toUpperCase();
+            } catch (e) {
+                status.innerText = "ОШИБКА СВЯЗИ С СЕРВЕРОМ";
+                console.error(e);
+            }
         }
 
-        async fn getCode() {
+        async function getTwoFactorCode() {
             const user = document.getElementById('auth-user').value;
-            const res = await fetch(`/api/get_2fa/${user}`);
-            const data = await res.json();
-            if (data.status === 'ok') {
-                document.getElementById('2fa-code').innerText = data.code;
-            } else {
-                alert("Пользователь не найден");
+            const codeDisplay = document.getElementById('2fa-code');
+            const status = document.getElementById('status-text');
+
+            if(!user) {
+                status.innerText = "ОШИБКА: ВВЕДИТЕ ЛОГИН";
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/get_2fa/${user}`);
+                const data = await response.json();
+                if (data.status === 'ok') {
+                    codeDisplay.innerText = data.code;
+                    status.innerText = "КОД ОБНОВЛЕН";
+                } else {
+                    status.innerText = "ПОЛЬЗОВАТЕЛЬ НЕ НАЙДЕН";
+                    codeDisplay.innerText = "------";
+                }
+            } catch (e) {
+                status.innerText = "ОШИБКА ЗАПРОСА";
+                console.error(e);
             }
         }
     </script>

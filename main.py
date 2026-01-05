@@ -1,86 +1,70 @@
-from flask import Flask, request, jsonify, render_template
-import json
-import pyotp
+from flask import Flask, request, jsonify
 import os
 
 app = Flask(__name__)
 
-# Временная очередь для новых пользователей (пока их не заберет ноутбук)
-pending_users = []
-# Секретный ключ для связи с твоим ноутбуком (должен совпадать на обоих концах)
+# Секретный токен (ДОЛЖЕН СОВПАДАТЬ С ХОСТОМ)
 SHARED_SECRET = "SUPER_SECRET_TOKEN_123"
 
-def load_users():
-    if os.path.exists('users.json'):
-        with open('users.json', 'r', encoding='utf-8') as f:
-            try:
-                return json.load(f)
-            except:
-                return {}
-    return {}
+# Временная база данных в оперативной памяти Сайта
+users_db = {}
+pending_registrations = []
 
-def save_users(users):
-    with open('users.json', 'w', encoding='utf-8') as f:
-        json.dump(users, f, ensure_ascii=False, indent=4)
-
-# --- ГЛАВНАЯ СТРАНИЦА (ДИЗАЙН) ---
 @app.route('/')
-def index():
-    return render_template('index.html')
+def home():
+    return f"MyOC Cloud Server. Users in memory: {len(users_db)}"
 
-# --- API ДЛЯ РЕГИСТРАЦИИ ---
+# МАРШРУТ: Регистрация нового юзера (например, через веб-форму)
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
-    username = data.get('username')
-    password = data.get('password')
+    if not data or 'username' not in data:
+        return jsonify({"status": "error"}), 400
+    
+    # Добавляем в очередь, чтобы Хост мог забрать себе
+    pending_registrations.append(data)
+    # Сразу сохраняем в память сайта
+    users_db[data['username']] = data
+    return jsonify({"status": "success"}), 200
 
-    if not username or not password:
-        return jsonify({"status": "error", "message": "Заполните все поля"}), 400
-
-    # Генерируем секретный ключ 2FA
-    totp_secret = pyotp.random_base32()
-
-    # Складываем в "очередь", чтобы ноутбук мог это скачать
-    pending_users.append({
-        "username": username,
-        "password": password,
-        "totp_secret": totp_secret
-    })
-
-    # Сохраняем на сайте ТОЛЬКО секрет (для генерации кодов в браузере)
-    # Пароль на сайте НЕ храним!
-    users = load_users()
-    users[username] = {"totp_secret": totp_secret}
-    save_users(users)
-
-    return jsonify({"status": "ok", "message": "Регистрация успешна! Данные передаются на хост."})
-
-# --- РУЧКА ДЛЯ НОУТБУКА (ЗАБРАТЬ НОВЫХ ЮЗЕРОВ) ---
+# МАРШРУТ: Хост забирает новых зарегистрированных
 @app.route('/api/get_pending', methods=['GET'])
 def get_pending():
-    # Проверка: только твой ноут с правильным токеном может забрать данные
-    token = request.headers.get('X-Auth-Token')
+    token = request.headers.get("X-Auth-Token")
     if token != SHARED_SECRET:
-        return jsonify({"status": "error", "message": "Forbidden"}), 403
+        return jsonify({"status": "forbidden"}), 403
     
-    global pending_users
-    # Копируем список, очищаем оригинал и отдаем данные ноутбуку
-    data = list(pending_users)
-    pending_users.clear()
-    return jsonify(data)
+    global pending_registrations
+    data = pending_registrations[:]
+    pending_registrations = [] # Очищаем очередь
+    return jsonify(data), 200
 
-# --- API ДЛЯ ПОЛУЧЕНИЯ ТЕКУЩЕГО КОДА 2FA ---
-@app.route('/api/get_2fa/<username>')
-def get_2fa(username):
-    users = load_users()
-    user = users.get(username)
-    if user:
-        totp = pyotp.TOTP(user['totp_secret'])
-        return jsonify({"status": "ok", "code": totp.now()})
-    return jsonify({"status": "error", "message": "Пользователь не найден"}), 404
+# МАРШРУТ: Хост восстанавливает базу сайта (после рестарта Render)
+@app.route('/api/sync/restore_users', methods=['POST'])
+def restore_users():
+    token = request.headers.get("X-Auth-Token")
+    if token != SHARED_SECRET:
+        return jsonify({"status": "forbidden"}), 403
+    
+    data = request.json
+    if data:
+        users_db.update(data)
+        return jsonify({"status": "synced", "total": len(users_db)}), 200
+    return jsonify({"status": "empty"}), 400
+
+# МАРШРУТ: Логин из Rust-клиента (идет на сайт)
+@app.route('/from_client/login', methods=['POST'])
+def login():
+    data = request.json
+    u, p = data.get('username'), data.get('password')
+    if u in users_db and users_db[u]['password'] == p:
+        return jsonify({
+            "status": "success", 
+            "totp_secret": users_db[u].get('totp_secret', "")
+        }), 200
+    return jsonify({"status": "fail"}), 401
 
 if __name__ == '__main__':
-    # На Render порт задается автоматически, 10000 - стандарт
+    # На Render порт задается через переменную окружения
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
